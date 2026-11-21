@@ -1,0 +1,324 @@
+@import "tailwindcss";
+
+:root {
+  --navy-950: #050c16;
+  --navy-900: #07111e;
+  --navy-800: #0f1e32;
+  --navy-700: #16304d;
+  --line: #1e3a5f;
+  --cyan: #38bdf8;
+  --blue: #0284c7;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--navy-950);
+  color: #f8fafc;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: "Sora", "Inter", sans-serif;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.35);
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease, background 0.2s ease;
+  user-select: none;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #0369a1, #0284c7 55%, #0ea5e9);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(2, 132, 199, 0.35);
+}
+.btn-green {
+  background: linear-gradient(135deg, #047857, #10b981);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(16, 185, 129, 0.35);
+}
+.btn-danger {
+  background: linear-gradient(135deg, #9f1239, #e11d48);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(225, 29, 72, 0.3);
+}
+.btn-cam {
+  background: #12233a;
+  color: var(--cyan);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+}
+.btn-ghost {
+  background: rgba(148, 163, 184, 0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+.btn-white {
+  background: #fff;
+  color: #065f46;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.25);
+}
+
+/* ---------- Inputs ---------- */
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #93b4d4;
+  margin: 14px 2px 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.field-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1.5px solid #22364f;
+  background: #081220;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field-input::placeholder {
+  color: #47586e;
+}
+.field-input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+.field-input.invalid {
+  border-color: rgba(239, 68, 68, 0.7);
+}
+
+/* ---------- Notices ---------- */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.notice-warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.notice-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.notice-err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+.notice-info {
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+/* ---------- Camera stage ---------- */
+.oval-guide {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 54%;
+  aspect-ratio: 3 / 4;
+  transform: translate(-50%, -50%);
+  border: 2.5px dashed rgba(56, 189, 248, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: border-color 0.3s ease, border-style 0.3s ease, box-shadow 0.3s ease;
+}
+.oval-locked {
+  border-color: var(--green);
+  border-style: solid;
+  box-shadow: 0 0 34px rgba(16, 185, 129, 0.4), inset 0 0 24px rgba(16, 185, 129, 0.12);
+}
+.cam-corner {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border-color: rgba(56, 189, 248, 0.85);
+  border-style: solid;
+  pointer-events: none;
+}
+.scanline {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.95), transparent);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.8);
+  animation: scan-y 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes scan-y {
+  0%,
+  100% {
+    top: 9%;
+  }
+  50% {
+    top: 88%;
+  }
+}
+
+/* ---------- Splash / ambient ---------- */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes float-blob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, -5%, 0) scale(1.08);
+  }
+}
+.float-blob {
+  animation: float-blob 16s ease-in-out infinite;
+}
+
+@keyframes wave-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.wave-drift {
+  animation: wave-drift 14s linear infinite;
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.check-pop {
+  animation: check-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ring-draw {
+  from {
+    stroke-dashoffset: 166;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.ring-draw {
+  stroke-dasharray: 166;
+  animation: ring-draw 0.6s ease-out 0.1s both;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
+  }
+  60% {
+    box-shadow: 0 0 0 16px rgba(16, 185, 129, 0);
+  }
+}
+.pulse-glow {
+  animation: pulse-glow 1.6s ease-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+/* ---------- Code block ---------- */
+.code-block {
+  background: #04090f;
+  border: 1px solid #1c2c42;
+  border-radius: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #9fb3c8;
+  overflow: auto;
+  max-height: 280px;
+  scrollbar-width: thin;
+  scrollbar-color: #22405f transparent;
+}
+.code-block::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.code-block::-webkit-scrollbar-thumb {
+  background: #22405f;
+  border-radius: 3px;
+}
+
+.mirrored {
+  transform: scaleX(-1);
+}
