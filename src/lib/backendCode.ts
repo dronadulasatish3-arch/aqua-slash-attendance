@@ -1,25 +1,25 @@
 // =======================================================
-// AQUA SLASH — UNIFIED GOOGLE APPS SCRIPT BACKEND (v6)
+// AQUA SLASH — UNIFIED GOOGLE APPS SCRIPT BACKEND (v7)
 // Paste into Code.gs -> Deploy -> Manage deployments ->
 // Edit (pencil) -> Version: New version -> Deploy.
 //
-// Clean 6 Tabs & Column Headers:
-//   1. user details       : full name | phone number | mail | Job Title | Face URL
-//   2. Student_Face_Data  : Student Name | Community ID | Face Descriptor
-//   3. Stuff Face_Data    : Full Name | Phone Number | Job Title | Face Descriptor
-//   4. Student Attendance : Student Name | Community Name | Check In | Check Out
-//   5. Stuff Attendance   : Date | Phone Number | Full Name | Job Title | Check In | Check Out | Community | distance
-//   6. Communities        : ID | Name | Address | Latitude | Longitude | Radius (m) | Active | Created
+// STRICT SEPARATION OF TABS:
+//   1. user details       : Master directory (all users, both staff & students)
+//   2. Student_Face_Data  : Students ONLY (biometric descriptors)
+//   3. Stuff Face_Data    : Staff ONLY (biometric descriptors)
+//   4. Student Attendance : Students ONLY (Check In & Check Out)
+//   5. Stuff Attendance   : Staff ONLY (Date, Phone, Name, Title, Check In, Check Out, Community, Distance)
+//   6. Communities        : Locations (Sobha Indraprastha 200m radius)
 // =======================================================
 
 export const UNIFIED_CODE_GS = `// =======================================================
-// AQUA SLASH — UNIFIED BACKEND v6
+// AQUA SLASH — UNIFIED BACKEND v7
 // Staff + Students Face Attendance + Communities + GPS + PIN
 // =======================================================
 var DRIVE_FOLDER_ID = "1akmXAdAXuCrl_rSBhnzetRtEIJLdtqdr";
 var SHEET_ID        = "1keNtJdMbyT7_kNYJq6Inbtm0HrZKR5wVN9nebugg4Uo";
 var SUBFOLDER_NAME  = "Registered_Faces";
-var VERSION = 6;
+var VERSION = 7;
 
 var ST_IN    = "Inside assigned location";
 var ST_OUT   = "Outside assigned location";
@@ -72,8 +72,8 @@ function handleApi_(action, p) {
     if (action === "dashboard")        return getDashboardData_();
     if (action === "register")         return registerAquaSlashEmployee(p);
     if (action === "updateFace")       return updateFaceTemplate_(p);
-    if (action === "getFaces")         return { success: true, version: VERSION, employees: getRegisteredFaceTemplates() };
-    if (action === "attendanceStatus") return { success: true, record: getTodayRecord_(String(p.phone || p.fullName || "")) };
+    if (action === "getFaces")         return { success: true, version: VERSION, employees: getAllFaceTemplates_() };
+    if (action === "attendanceStatus") return { success: true, record: getTodayRecord_(p) };
     if (action === "todayAttendance")  return { success: true, dateKey: todayKey_(), records: getTodayAttendanceList_() };
     if (action === "checkIn")          return markAttendance_(p, "in");
     if (action === "checkOut")         return markAttendance_(p, "out");
@@ -86,8 +86,8 @@ function handleApi_(action, p) {
     if (action === "studentCheckOut")  return studentMark_(p, "out");
     if (action === "studentFaces")         return { success: true, version: VERSION, students: getStudentFaceTemplates_() };
     if (action === "registerStudentFace")  return registerStudentWithFace_(p);
-    if (action === "studentFaceCheckIn")   return studentFaceMark_(p, "in");
-    if (action === "studentFaceCheckOut")  return studentFaceMark_(p, "out");
+    if (action === "studentFaceCheckIn")   return studentMark_(p, "in");
+    if (action === "studentFaceCheckOut")  return studentMark_(p, "out");
     if (action === "report")           return report_(p);
     return { success: false, message: "Unknown action: " + action };
   } catch (err) {
@@ -135,76 +135,29 @@ function ensureSheet_(name, headers) {
   return sh;
 }
 
-// 1. Tab: user details
+// 1. Tab: user details (ALL users: staff & students)
 function userDetailsSheet_() {
-  var ss = ss_();
-  var sh = ss.getSheetByName("user details");
-  if (!sh) sh = ss.getSheetByName("Sheet1");
-  if (!sh) {
-    sh = ss.insertSheet("user details");
-    sh.appendRow(["full name", "phone number", "mail", "Job Title", "Face URL"]);
-    sh.setFrozenRows(1);
-  } else if (sh.getName() === "Sheet1") {
-    sh.setName("user details");
-  }
-  return sh;
+  return ensureSheet_("user details", ["full name", "phone number", "mail", "Job Title", "Face URL"]);
 }
 
-// 2. Tab: Student_Face_Data
+// 2. Tab: Student_Face_Data (STUDENTS ONLY)
 function studentFaceSheet_() {
-  var ss = ss_();
-  var sh = ss.getSheetByName("Student_Face_Data");
-  if (!sh) {
-    sh = ss.insertSheet("Student_Face_Data");
-    sh.appendRow(["Student Name", "Community ID", "Face Descriptor"]);
-    sh.setFrozenRows(1);
-  }
-  return sh;
+  return ensureSheet_("Student_Face_Data", ["Student Name", "Community ID", "Face Descriptor"]);
 }
 
-// 3. Tab: Stuff Face_Data
+// 3. Tab: Stuff Face_Data (STAFF ONLY)
 function staffFaceSheet_() {
-  var ss = ss_();
-  var sh = ss.getSheetByName("Stuff Face_Data");
-  if (!sh) sh = ss.getSheetByName("Face_Data");
-  if (!sh) {
-    sh = ss.insertSheet("Stuff Face_Data");
-    sh.appendRow(["Full Name", "Phone Number", "Job Title", "Face Descriptor"]);
-    sh.setFrozenRows(1);
-  } else if (sh.getName() === "Face_Data") {
-    sh.setName("Stuff Face_Data");
-  }
-  return sh;
+  return ensureSheet_("Stuff Face_Data", ["Full Name", "Phone Number", "Job Title", "Face Descriptor"]);
 }
 
-// 4. Tab: Student Attendance
+// 4. Tab: Student Attendance (STUDENTS ONLY)
 function studentAttSheet_() {
-  var ss = ss_();
-  var sh = ss.getSheetByName("Student Attendance");
-  if (!sh) sh = ss.getSheetByName("Student_Attendance");
-  if (!sh) {
-    sh = ss.insertSheet("Student Attendance");
-    sh.appendRow(["Student Name", "Community Name", "Check In", "Check Out"]);
-    sh.setFrozenRows(1);
-  } else if (sh.getName() === "Student_Attendance") {
-    sh.setName("Student Attendance");
-  }
-  return sh;
+  return ensureSheet_("Student Attendance", ["Student Name", "Community Name", "Check In", "Check Out"]);
 }
 
-// 5. Tab: Stuff Attendance
+// 5. Tab: Stuff Attendance (STAFF ONLY)
 function staffAttSheet_() {
-  var ss = ss_();
-  var sh = ss.getSheetByName("Stuff Attendance");
-  if (!sh) sh = ss.getSheetByName("Attendance");
-  if (!sh) {
-    sh = ss.insertSheet("Stuff Attendance");
-    sh.appendRow(["Date", "Phone Number", "Full Name", "Job Title", "Check In", "Check Out", "Community", "distance"]);
-    sh.setFrozenRows(1);
-  } else if (sh.getName() === "Attendance") {
-    sh.setName("Stuff Attendance");
-  }
-  return sh;
+  return ensureSheet_("Stuff Attendance", ["Date", "Phone Number", "Full Name", "Job Title", "Check In", "Check Out", "Community", "distance"]);
 }
 
 // 6. Tab: Communities
@@ -220,14 +173,12 @@ function communitiesSheet_() {
   return sh;
 }
 
-// ---------- AUTOMATIC CLEANUP & TAB CONSOLIDATION ----------
-// Removes all old/duplicate tabs and leaves only the 6 official tabs in exact order
+// ---------- STRICT CLEANUP: REMOVES ALL DUPLICATE TABS ----------
 function cleanSheet_() {
   var ss = ss_();
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    // 1. Ensure 6 official tabs exist with correct headers
     var uSheet    = userDetailsSheet_();
     var sfSheet   = studentFaceSheet_();
     var stfSheet  = staffFaceSheet_();
@@ -235,139 +186,46 @@ function cleanSheet_() {
     var stAttSheet= staffAttSheet_();
     var commSheet = communitiesSheet_();
 
-    // 2. Migrate Face_Data -> Stuff Face_Data if old duplicate exists
-    var oldFace = ss.getSheetByName("Face_Data");
-    if (oldFace && oldFace.getSheetId() !== stfSheet.getSheetId()) {
-      var fdData = oldFace.getDataRange().getValues();
-      for (var f = 1; f < fdData.length; f++) {
-        var fn = String(fdData[f][0] || "").trim();
-        var fp = String(fdData[f][1] || "").trim();
-        if (fn || fp) {
-          var exists = false;
-          var curSt = stfSheet.getDataRange().getValues();
-          for (var c = 1; c < curSt.length; c++) {
-            if (normPhone_(curSt[c][1]) === normPhone_(fp) && normPhone_(fp)) { exists = true; break; }
-          }
-          if (!exists) {
-            stfSheet.appendRow([fn, fp, String(fdData[f][2] || "Staff").trim(), String(fdData[f][3] || "")]);
-          }
-        }
-      }
-      try { ss.deleteSheet(oldFace); } catch(e){}
+    var officialSheets = [uSheet, sfSheet, stfSheet, sAttSheet, stAttSheet, commSheet];
+    var officialIds = {};
+    for (var o = 0; o < officialSheets.length; o++) {
+      officialIds[officialSheets[o].getSheetId()] = true;
     }
 
-    // 3. Migrate Attendance -> Stuff Attendance if old duplicate exists
-    var oldAtt = ss.getSheetByName("Attendance");
-    if (oldAtt && oldAtt.getSheetId() !== stAttSheet.getSheetId()) {
-      var aData = oldAtt.getDataRange().getDisplayValues();
-      for (var a = 1; a < aData.length; a++) {
-        var dKey = String(aData[a][0] || "").trim();
-        var ph   = String(aData[a][1] || "").trim();
-        var nm   = String(aData[a][2] || "").trim();
-        if (ph || nm) {
-          var jt = String(aData[a][3] || "Staff").trim();
-          var ci = String(aData[a][4] || "").trim();
-          var co = String(aData[a][5] || "").trim();
-          var cm = String(aData[a][6] || "outside").trim();
-          var dt = String(aData[a][10] || "").trim();
-          stAttSheet.appendRow([dKey, ph, nm, jt, ci, co, cm, dt]);
-        }
-      }
-      try { ss.deleteSheet(oldAtt); } catch(e){}
-    }
+    var all = ss.getSheets();
+    for (var i = 0; i < all.length; i++) {
+      var sh = all[i];
+      var shId = sh.getSheetId();
+      var rawName = sh.getName();
 
-    // 4. Migrate Student_Attendance -> Student Attendance if old duplicate exists
-    var oldSAtt = ss.getSheetByName("Student_Attendance");
-    if (oldSAtt && oldSAtt.getSheetId() !== sAttSheet.getSheetId()) {
-      var saData = oldSAtt.getDataRange().getDisplayValues();
-      for (var sa = 1; sa < saData.length; sa++) {
-        var sName = String(saData[sa][2] || saData[sa][0] || "").trim();
-        var sComm = String(saData[sa][1] || "outside").trim();
-        var sIn   = String(saData[sa][3] || "").trim();
-        var sOut  = String(saData[sa][4] || "").trim();
-        if (sName) {
-          sAttSheet.appendRow([sName, sComm, sIn, sOut]);
-        }
-      }
-      try { ss.deleteSheet(oldSAtt); } catch(e){}
-    }
-
-    // 5. Delete redundant old tabs: Students, Staff_Assignments, Sheet1
-    var toDelete = ["Students", "Staff_Assignments", "Sheet1"];
-    for (var d = 0; d < toDelete.length; d++) {
-      var shDel = ss.getSheetByName(toDelete[d]);
-      if (shDel && shDel.getSheetId() !== uSheet.getSheetId()) {
-        try { ss.deleteSheet(shDel); } catch(e){}
-      }
-    }
-
-    // 6. Consolidate & delete any tabs with accidental leading/trailing spaces
-    var allowed = {
-      "user details": uSheet,
-      "Student_Face_Data": sfSheet,
-      "Stuff Face_Data": stfSheet,
-      "Student Attendance": sAttSheet,
-      "Stuff Attendance": stAttSheet,
-      "Communities": commSheet
-    };
-
-    var allSheets = ss.getSheets();
-    for (var sIdx = 0; sIdx < allSheets.length; sIdx++) {
-      var shCheck = allSheets[sIdx];
-      var rawName = shCheck.getName();
-      var trimmed = rawName.trim();
-
-      if (rawName === "Settings") {
-        try { shCheck.hideSheet(); } catch(e){}
+      if (rawName.trim() === "Settings") {
+        try { sh.hideSheet(); } catch(e){}
         continue;
       }
 
-      if (!allowed[trimmed]) {
-        try { ss.deleteSheet(shCheck); } catch(e){}
-        continue;
-      }
-
-      if (rawName !== trimmed) {
-        var officialTarget = allowed[trimmed];
-        if (officialTarget && officialTarget.getSheetId() !== shCheck.getSheetId()) {
-          var extraData = shCheck.getDataRange().getValues();
-          for (var rIdx = 1; rIdx < extraData.length; rIdx++) {
-            var hasVal = extraData[rIdx].some(function(v) { return String(v).trim() !== ""; });
-            if (hasVal) officialTarget.appendRow(extraData[rIdx]);
-          }
-          try { ss.deleteSheet(shCheck); } catch(e){}
-        } else {
-          shCheck.setName(trimmed);
-        }
+      // If it is NOT one of the 6 official sheets (e.g. duplicate with space or old tab) -> DELETE IT
+      if (!officialIds[shId]) {
+        try { ss.deleteSheet(sh); } catch(e){}
       }
     }
 
-    // 7. Hide Settings tab if present
-    var setSh = ss.getSheetByName("Settings");
-    if (setSh) {
-      try { setSh.hideSheet(); } catch(e){}
-    }
-
-    // 8. Reorder tabs 1 to 6 in exact order
-    var official = [uSheet, sfSheet, stfSheet, sAttSheet, stAttSheet, commSheet];
-    for (var o = 0; o < official.length; o++) {
-      ss.setActiveSheet(official[o]);
-      ss.moveActiveSheet(o + 1);
+    // Set exact order 1 to 6
+    var officialNames = ["user details", "Student_Face_Data", "Stuff Face_Data", "Student Attendance", "Stuff Attendance", "Communities"];
+    for (var k = 0; k < officialSheets.length; k++) {
+      officialSheets[k].setName(officialNames[k]);
+      ss.setActiveSheet(officialSheets[k]);
+      ss.moveActiveSheet(k + 1);
     }
     ss.setActiveSheet(uSheet);
     SpreadsheetApp.flush();
 
-    var activeTabs = [];
-    var all = ss.getSheets();
-    for (var i = 0; i < all.length; i++) {
-      if (!all[i].isSheetHidden()) activeTabs.push(all[i].getName());
+    var remaining = [];
+    var currentAll = ss.getSheets();
+    for (var c = 0; c < currentAll.length; c++) {
+      if (!currentAll[c].isSheetHidden()) remaining.push(currentAll[c].getName());
     }
 
-    return {
-      success: true,
-      message: "Spreadsheet cleaned! Extra tabs removed and migrated into 6 clean tabs.",
-      tabs: activeTabs
-    };
+    return { success: true, message: "Cleaned! Exactly 6 tabs remaining with zero duplicate tabs.", tabs: remaining };
   } finally {
     lock.releaseLock();
   }
@@ -393,7 +251,7 @@ function getOrCreatePhotoFolder() {
   return subFolders.hasNext() ? subFolders.next() : parentFolder.createFolder(SUBFOLDER_NAME);
 }
 
-// ---------- PIN ACCESS (Settings sheet) ----------
+// ---------- PIN ACCESS ----------
 
 function settingsSheet_() { return ensureSheet_("Settings", ["Key", "Value"]); }
 
@@ -608,7 +466,7 @@ function saveCommunity_(p) {
 }
 
 function bootstrap_() {
-  cleanSheet_(); // Auto-clean tabs whenever bootstrap runs
+  cleanSheet_();
   var comms = readCommunities_();
   var out = [];
   for (var i = 0; i < comms.length; i++) {
@@ -616,17 +474,10 @@ function bootstrap_() {
   }
   var sfSh = studentFaceSheet_();
   var sfCount = Math.max(0, sfSh.getLastRow() - 1);
-  return { success: true, version: VERSION, adminSet: !!getSetting_("adminPin"), coachSet: !!getSetting_("coachPin"), communities: out, assignments: readAssignments_(), studentFaceCount: sfCount };
+  return { success: true, version: VERSION, adminSet: !!getSetting_("adminPin"), coachSet: !!getSetting_("coachPin"), communities: out, assignments: {}, studentFaceCount: sfCount };
 }
 
-function readAssignments_() {
-  var sh = communitiesSheet_();
-  return {};
-}
-
-function assignStaff_(p) {
-  return { success: true, assignments: {} };
-}
+function assignStaff_(p) { return { success: true }; }
 
 // ---------- DASHBOARD ----------
 
@@ -711,19 +562,6 @@ function getDashboardData_() {
     });
   }
 
-  for (var k in bioRowsByPhone) {
-    if (!seenPhones[k]) {
-      var br = bioRowsByPhone[k];
-      var df = fileByPhone[k] || null;
-      var d2 = descByPhone[k] || [];
-      employees.push({
-        fullName: br.fullName, phone: br.phone, email: "", jobTitle: br.jobTitle,
-        faceUrl: df ? df.url : "", registeredDate: df ? df.createdDisplay : "",
-        hasFaceDescriptor: d2.length === 128, descriptor: d2
-      });
-    }
-  }
-
   return {
     success: true,
     version: VERSION,
@@ -737,7 +575,7 @@ function getDashboardData_() {
   };
 }
 
-// ---------- REGISTRATION ----------
+// ---------- REGISTRATION (STRICT SEPARATION) ----------
 
 function registerAquaSlashEmployee(payload) {
   var lock = LockService.getScriptLock();
@@ -754,6 +592,7 @@ function registerAquaSlashEmployee(payload) {
     var communityId = String(payload.communityId || "COM-SOBHA").trim();
     var incomingDesc = payload.faceDescriptor || payload.descriptor || null;
 
+    // Check duplicate in user details
     for (var i = 1; i < data.length; i++) {
       var rowName = String(data[i][0] || "").trim().toLowerCase();
       var rowPhone = normPhone_(data[i][1]);
@@ -763,6 +602,7 @@ function registerAquaSlashEmployee(payload) {
       }
     }
 
+    // Save photo to Drive
     var faceUrl = "";
     if (payload.photoBase64) {
       try {
@@ -778,6 +618,7 @@ function registerAquaSlashEmployee(payload) {
       } catch (err) {}
     }
 
+    // 1. ALWAYS ADD TO: user details (master directory)
     uSheet.appendRow([
       fullName,
       cleanPhone,
@@ -786,7 +627,9 @@ function registerAquaSlashEmployee(payload) {
       faceUrl
     ]);
 
+    // 2. STRICT SPLIT:
     if (isStudent) {
+      // STUDENTS ONLY -> Student_Face_Data
       var sfSheet = studentFaceSheet_();
       sfSheet.appendRow([
         fullName,
@@ -794,6 +637,7 @@ function registerAquaSlashEmployee(payload) {
         incomingDesc ? JSON.stringify(incomingDesc) : ""
       ]);
     } else {
+      // STAFF ONLY -> Stuff Face_Data
       var stfSheet = staffFaceSheet_();
       stfSheet.appendRow([
         fullName,
@@ -816,29 +660,55 @@ function registerAquaSlashEmployee(payload) {
   }
 }
 
-// ---------- FACE TEMPLATES (STAFF & STUDENTS) ----------
+// ---------- FACE TEMPLATES (RETURNS BOTH FOR FACE LOGIN) ----------
 
-function getRegisteredFaceTemplates() {
-  var sh = staffFaceSheet_();
-  var data = sh.getDataRange().getValues();
-  var templates = [];
-  for (var i = 1; i < data.length; i++) {
-    var rawDesc = data[i][3];
+function getAllFaceTemplates_() {
+  var list = [];
+
+  // 1. Staff Face Templates
+  var stSh = staffFaceSheet_();
+  var stData = stSh.getDataRange().getValues();
+  for (var i = 1; i < stData.length; i++) {
+    var rawDesc = stData[i][3];
     if (rawDesc) {
       try {
-        var parsed = JSON.parse(String(rawDesc));
-        if (parsed && parsed.length === 128) {
-          templates.push({
-            fullName: String(data[i][0] || "").trim(),
-            phone: String(data[i][1] || "").trim(),
-            jobTitle: String(data[i][2] || "").trim(),
-            descriptor: parsed
+        var p = JSON.parse(String(rawDesc));
+        if (p && p.length === 128) {
+          list.push({
+            fullName: String(stData[i][0] || "").trim(),
+            phone: String(stData[i][1] || "").trim(),
+            jobTitle: String(stData[i][2] || "Staff").trim(),
+            isStudent: false,
+            descriptor: p
           });
         }
-      } catch (err) {}
+      } catch (e) {}
     }
   }
-  return templates;
+
+  // 2. Student Face Templates
+  var stuSh = studentFaceSheet_();
+  var stuData = stuSh.getDataRange().getValues();
+  for (var j = 1; j < stuData.length; j++) {
+    var sDesc = stuData[j][2];
+    if (sDesc) {
+      try {
+        var sp = JSON.parse(String(sDesc));
+        if (sp && sp.length === 128) {
+          list.push({
+            fullName: String(stuData[j][0] || "").trim(),
+            phone: "STU-" + j,
+            jobTitle: "Student",
+            isStudent: true,
+            communityId: String(stuData[j][1] || "").trim(),
+            descriptor: sp
+          });
+        }
+      } catch (e) {}
+    }
+  }
+
+  return list;
 }
 
 function getStudentFaceTemplates_() {
@@ -854,7 +724,7 @@ function getStudentFaceTemplates_() {
       var d = JSON.parse(String(rawDesc));
       if (d && d.length === 128) {
         out.push({
-          studentId: "STU-" + (i),
+          studentId: "STU-" + i,
           name: name,
           communityId: commId,
           descriptor: d
@@ -875,6 +745,7 @@ function updateFaceTemplate_(payload) {
     var desc = payload.faceDescriptor || payload.descriptor || null;
     if (!desc || desc.length !== 128) return { success: false, message: "Valid 128-point face descriptor required." };
 
+    // Check staff
     var staffSh = staffFaceSheet_();
     var sData = staffSh.getDataRange().getValues();
     for (var i = 1; i < sData.length; i++) {
@@ -885,6 +756,7 @@ function updateFaceTemplate_(payload) {
       }
     }
 
+    // Check student
     var stuSh = studentFaceSheet_();
     var stData = stuSh.getDataRange().getValues();
     for (var j = 1; j < stData.length; j++) {
@@ -899,7 +771,48 @@ function updateFaceTemplate_(payload) {
   } finally { lock.releaseLock(); }
 }
 
-// ---------- STAFF ATTENDANCE (Tab: Stuff Attendance) ----------
+// ---------- STRICT ATTENDANCE ROUTER (NEVER MIX TABS) ----------
+
+function isUserStudent_(fullName, phone, jobTitle) {
+  if (/student/i.test(jobTitle)) return true;
+  var target = String(fullName || "").trim().toLowerCase();
+  if (target) {
+    var sData = studentFaceSheet_().getDataRange().getValues();
+    for (var s = 1; s < sData.length; s++) {
+      if (String(sData[s][0]).trim().toLowerCase() === target) return true;
+    }
+  }
+  var pNorm = normPhone_(phone);
+  var uData = userDetailsSheet_().getDataRange().getValues();
+  for (var u = 1; u < uData.length; u++) {
+    var uName = String(uData[u][0] || "").trim().toLowerCase();
+    var uPhone = normPhone_(uData[u][1]);
+    if ((pNorm && uPhone === pNorm) || (target && uName === target)) {
+      return /student/i.test(String(uData[u][3] || ""));
+    }
+  }
+  return false;
+}
+
+function markAttendance_(p, mode) {
+  var fullName = String(p.fullName || p.studentName || p.name || "").trim();
+  var rawPhone = String(p.phone || "").trim();
+  var jobTitle = String(p.jobTitle || "").trim();
+
+  // STRICT SEPARATION:
+  var isStudent = p.isStudent === true || isUserStudent_(fullName, rawPhone, jobTitle);
+
+  if (isStudent) {
+    // ROUTE TO STUDENT ATTENDANCE ONLY!
+    p.studentName = fullName;
+    return studentMark_(p, mode);
+  } else {
+    // ROUTE TO STUFF ATTENDANCE ONLY!
+    return staffMark_(p, mode);
+  }
+}
+
+// ---------- STAFF ATTENDANCE (Tab: Stuff Attendance ONLY) ----------
 
 function getTodayAttendanceList_() {
   var sh = staffAttSheet_();
@@ -926,9 +839,10 @@ function getTodayAttendanceList_() {
   return list;
 }
 
-function getTodayRecord_(phoneOrName) {
-  var pNorm = normPhone_(phoneOrName);
-  var targetName = String(phoneOrName || "").trim().toLowerCase();
+function getTodayRecord_(p) {
+  var pPhone = typeof p === "string" ? p : String(p?.phone || p?.fullName || "");
+  var pNorm = normPhone_(pPhone);
+  var targetName = pPhone.trim().toLowerCase();
   var list = getTodayAttendanceList_();
   for (var i = list.length - 1; i >= 0; i--) {
     if ((pNorm && normPhone_(list[i].phone) === pNorm) || (targetName && list[i].fullName.toLowerCase() === targetName)) {
@@ -938,7 +852,7 @@ function getTodayRecord_(phoneOrName) {
   return null;
 }
 
-function markAttendance_(p, mode) {
+function staffMark_(p, mode) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -960,7 +874,6 @@ function markAttendance_(p, mode) {
         }
       }
     }
-
     if (!fullName) fullName = "Staff Member";
 
     var geo = evaluateLocation_(p.lat, p.lng, "");
@@ -1019,7 +932,7 @@ function markAttendance_(p, mode) {
   }
 }
 
-// ---------- STUDENT ATTENDANCE (Tab: Student Attendance) ----------
+// ---------- STUDENT ATTENDANCE (Tab: Student Attendance ONLY) ----------
 
 function readStudentToday_() {
   var sh = studentAttSheet_();
@@ -1053,7 +966,7 @@ function studentMark_(p, mode) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var studentName = String(p.studentName || p.name || p.fullName || "").trim();
+    var studentName = String(p.studentName || p.fullName || p.name || "").trim();
     if (!studentName) return { success: false, message: "Student Name is required." };
 
     var geo = evaluateLocation_(p.lat, p.lng, p.communityId || "");
@@ -1101,10 +1014,6 @@ function studentMark_(p, mode) {
   } finally {
     lock.releaseLock();
   }
-}
-
-function studentFaceMark_(p, mode) {
-  return studentMark_(p, mode);
 }
 
 function studentToday_(p) {
