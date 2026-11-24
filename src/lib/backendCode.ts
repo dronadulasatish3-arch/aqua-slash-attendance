@@ -301,13 +301,54 @@ function cleanSheet_() {
       }
     }
 
-    // 6. Hide Settings tab if present (keeps PIN auth working without user seeing it)
+    // 6. Consolidate & delete any tabs with accidental leading/trailing spaces
+    var allowed = {
+      "user details": uSheet,
+      "Student_Face_Data": sfSheet,
+      "Stuff Face_Data": stfSheet,
+      "Student Attendance": sAttSheet,
+      "Stuff Attendance": stAttSheet,
+      "Communities": commSheet
+    };
+
+    var allSheets = ss.getSheets();
+    for (var sIdx = 0; sIdx < allSheets.length; sIdx++) {
+      var shCheck = allSheets[sIdx];
+      var rawName = shCheck.getName();
+      var trimmed = rawName.trim();
+
+      if (rawName === "Settings") {
+        try { shCheck.hideSheet(); } catch(e){}
+        continue;
+      }
+
+      if (!allowed[trimmed]) {
+        try { ss.deleteSheet(shCheck); } catch(e){}
+        continue;
+      }
+
+      if (rawName !== trimmed) {
+        var officialTarget = allowed[trimmed];
+        if (officialTarget && officialTarget.getSheetId() !== shCheck.getSheetId()) {
+          var extraData = shCheck.getDataRange().getValues();
+          for (var rIdx = 1; rIdx < extraData.length; rIdx++) {
+            var hasVal = extraData[rIdx].some(function(v) { return String(v).trim() !== ""; });
+            if (hasVal) officialTarget.appendRow(extraData[rIdx]);
+          }
+          try { ss.deleteSheet(shCheck); } catch(e){}
+        } else {
+          shCheck.setName(trimmed);
+        }
+      }
+    }
+
+    // 7. Hide Settings tab if present
     var setSh = ss.getSheetByName("Settings");
     if (setSh) {
       try { setSh.hideSheet(); } catch(e){}
     }
 
-    // 7. Reorder tabs 1 to 6 in exact order
+    // 8. Reorder tabs 1 to 6 in exact order
     var official = [uSheet, sfSheet, stfSheet, sAttSheet, stAttSheet, commSheet];
     for (var o = 0; o < official.length; o++) {
       ss.setActiveSheet(official[o]);
