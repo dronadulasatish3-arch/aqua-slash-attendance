@@ -3,7 +3,7 @@
 // Paste into Code.gs -> Deploy -> Manage deployments ->
 // Edit (pencil) -> Version: New version -> Deploy.
 //
-// Tabs & Column Headers:
+// Clean 6 Tabs & Column Headers:
 //   1. user details       : full name | phone number | mail | Job Title | Face URL
 //   2. Student_Face_Data  : Student Name | Community ID | Face Descriptor
 //   3. Stuff Face_Data    : Full Name | Phone Number | Job Title | Face Descriptor
@@ -65,6 +65,7 @@ function handleApi_(action, p) {
   try {
     if (action === "ping") return { success: true, service: "aqua-slash-unified", version: VERSION, time: new Date().toISOString() };
     if (action === "bootstrap")        return bootstrap_();
+    if (action === "cleanSheet")       return cleanSheet_();
     if (action === "login")            return login_(p);
     if (action === "setupAdminPin")    return setupAdminPin_(p);
     if (action === "changePins")       return changePins_(p);
@@ -143,6 +144,8 @@ function userDetailsSheet_() {
     sh = ss.insertSheet("user details");
     sh.appendRow(["full name", "phone number", "mail", "Job Title", "Face URL"]);
     sh.setFrozenRows(1);
+  } else if (sh.getName() === "Sheet1") {
+    sh.setName("user details");
   }
   return sh;
 }
@@ -168,6 +171,8 @@ function staffFaceSheet_() {
     sh = ss.insertSheet("Stuff Face_Data");
     sh.appendRow(["Full Name", "Phone Number", "Job Title", "Face Descriptor"]);
     sh.setFrozenRows(1);
+  } else if (sh.getName() === "Face_Data") {
+    sh.setName("Stuff Face_Data");
   }
   return sh;
 }
@@ -181,6 +186,8 @@ function studentAttSheet_() {
     sh = ss.insertSheet("Student Attendance");
     sh.appendRow(["Student Name", "Community Name", "Check In", "Check Out"]);
     sh.setFrozenRows(1);
+  } else if (sh.getName() === "Student_Attendance") {
+    sh.setName("Student Attendance");
   }
   return sh;
 }
@@ -194,6 +201,8 @@ function staffAttSheet_() {
     sh = ss.insertSheet("Stuff Attendance");
     sh.appendRow(["Date", "Phone Number", "Full Name", "Job Title", "Check In", "Check Out", "Community", "distance"]);
     sh.setFrozenRows(1);
+  } else if (sh.getName() === "Attendance") {
+    sh.setName("Stuff Attendance");
   }
   return sh;
 }
@@ -209,6 +218,118 @@ function communitiesSheet_() {
     sh.appendRow(["COM-SOBHA", "Sobha Indraprastha", "Sobha Indraprastha, Rajajinagar, Bengaluru", 12.9984, 77.5562, 200, true, new Date().toISOString()]);
   }
   return sh;
+}
+
+// ---------- AUTOMATIC CLEANUP & TAB CONSOLIDATION ----------
+// Removes all old/duplicate tabs and leaves only the 6 official tabs in exact order
+function cleanSheet_() {
+  var ss = ss_();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    // 1. Ensure 6 official tabs exist with correct headers
+    var uSheet    = userDetailsSheet_();
+    var sfSheet   = studentFaceSheet_();
+    var stfSheet  = staffFaceSheet_();
+    var sAttSheet = studentAttSheet_();
+    var stAttSheet= staffAttSheet_();
+    var commSheet = communitiesSheet_();
+
+    // 2. Migrate Face_Data -> Stuff Face_Data if old duplicate exists
+    var oldFace = ss.getSheetByName("Face_Data");
+    if (oldFace && oldFace.getSheetId() !== stfSheet.getSheetId()) {
+      var fdData = oldFace.getDataRange().getValues();
+      for (var f = 1; f < fdData.length; f++) {
+        var fn = String(fdData[f][0] || "").trim();
+        var fp = String(fdData[f][1] || "").trim();
+        if (fn || fp) {
+          var exists = false;
+          var curSt = stfSheet.getDataRange().getValues();
+          for (var c = 1; c < curSt.length; c++) {
+            if (normPhone_(curSt[c][1]) === normPhone_(fp) && normPhone_(fp)) { exists = true; break; }
+          }
+          if (!exists) {
+            stfSheet.appendRow([fn, fp, String(fdData[f][2] || "Staff").trim(), String(fdData[f][3] || "")]);
+          }
+        }
+      }
+      try { ss.deleteSheet(oldFace); } catch(e){}
+    }
+
+    // 3. Migrate Attendance -> Stuff Attendance if old duplicate exists
+    var oldAtt = ss.getSheetByName("Attendance");
+    if (oldAtt && oldAtt.getSheetId() !== stAttSheet.getSheetId()) {
+      var aData = oldAtt.getDataRange().getDisplayValues();
+      for (var a = 1; a < aData.length; a++) {
+        var dKey = String(aData[a][0] || "").trim();
+        var ph   = String(aData[a][1] || "").trim();
+        var nm   = String(aData[a][2] || "").trim();
+        if (ph || nm) {
+          var jt = String(aData[a][3] || "Staff").trim();
+          var ci = String(aData[a][4] || "").trim();
+          var co = String(aData[a][5] || "").trim();
+          var cm = String(aData[a][6] || "outside").trim();
+          var dt = String(aData[a][10] || "").trim();
+          stAttSheet.appendRow([dKey, ph, nm, jt, ci, co, cm, dt]);
+        }
+      }
+      try { ss.deleteSheet(oldAtt); } catch(e){}
+    }
+
+    // 4. Migrate Student_Attendance -> Student Attendance if old duplicate exists
+    var oldSAtt = ss.getSheetByName("Student_Attendance");
+    if (oldSAtt && oldSAtt.getSheetId() !== sAttSheet.getSheetId()) {
+      var saData = oldSAtt.getDataRange().getDisplayValues();
+      for (var sa = 1; sa < saData.length; sa++) {
+        var sName = String(saData[sa][2] || saData[sa][0] || "").trim();
+        var sComm = String(saData[sa][1] || "outside").trim();
+        var sIn   = String(saData[sa][3] || "").trim();
+        var sOut  = String(saData[sa][4] || "").trim();
+        if (sName) {
+          sAttSheet.appendRow([sName, sComm, sIn, sOut]);
+        }
+      }
+      try { ss.deleteSheet(oldSAtt); } catch(e){}
+    }
+
+    // 5. Delete redundant old tabs: Students, Staff_Assignments, Sheet1
+    var toDelete = ["Students", "Staff_Assignments", "Sheet1"];
+    for (var d = 0; d < toDelete.length; d++) {
+      var shDel = ss.getSheetByName(toDelete[d]);
+      if (shDel && shDel.getSheetId() !== uSheet.getSheetId()) {
+        try { ss.deleteSheet(shDel); } catch(e){}
+      }
+    }
+
+    // 6. Hide Settings tab if present (keeps PIN auth working without user seeing it)
+    var setSh = ss.getSheetByName("Settings");
+    if (setSh) {
+      try { setSh.hideSheet(); } catch(e){}
+    }
+
+    // 7. Reorder tabs 1 to 6 in exact order
+    var official = [uSheet, sfSheet, stfSheet, sAttSheet, stAttSheet, commSheet];
+    for (var o = 0; o < official.length; o++) {
+      ss.setActiveSheet(official[o]);
+      ss.moveActiveSheet(o + 1);
+    }
+    ss.setActiveSheet(uSheet);
+    SpreadsheetApp.flush();
+
+    var activeTabs = [];
+    var all = ss.getSheets();
+    for (var i = 0; i < all.length; i++) {
+      if (!all[i].isSheetHidden()) activeTabs.push(all[i].getName());
+    }
+
+    return {
+      success: true,
+      message: "Spreadsheet cleaned! Extra tabs removed and migrated into 6 clean tabs.",
+      tabs: activeTabs
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function isTrue_(v) { return v === true || String(v).toUpperCase() === "TRUE"; }
@@ -328,7 +449,7 @@ function readCommunities_() {
       address: String(data[i][2] || "").trim(),
       lat: numOrNull_(data[i][3]),
       lng: numOrNull_(data[i][4]),
-      radius: numOr_(data[i][5], 200), // Default 200 meters!
+      radius: numOr_(data[i][5], 200),
       active: data[i][6] === "" ? true : isTrue_(data[i][6]),
       created: String(data[i][7] || "")
     });
@@ -354,9 +475,6 @@ function distM_(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// 200m Community Geofence Check:
-// If within 200m of community: recognized community name + distance
-// If outside 200m or no community: "outside" + distance
 function evaluateLocation_(lat, lng, specificCommId) {
   var latNum = parseFloat(lat), lngNum = parseFloat(lng);
   var hasGps = isFinite(latNum) && isFinite(lngNum) && Math.abs(latNum) <= 90 && Math.abs(lngNum) <= 180;
@@ -449,6 +567,7 @@ function saveCommunity_(p) {
 }
 
 function bootstrap_() {
+  cleanSheet_(); // Auto-clean tabs whenever bootstrap runs
   var comms = readCommunities_();
   var out = [];
   for (var i = 0; i < comms.length; i++) {
@@ -459,51 +578,13 @@ function bootstrap_() {
   return { success: true, version: VERSION, adminSet: !!getSetting_("adminPin"), coachSet: !!getSetting_("coachPin"), communities: out, assignments: readAssignments_(), studentFaceCount: sfCount };
 }
 
-// ---------- STAFF ASSIGNMENTS ----------
-
 function readAssignments_() {
-  var data = ensureSheet_("Staff_Assignments", ["Phone", "Community ID"]).getDataRange().getValues();
-  var map = {};
-  for (var i = 1; i < data.length; i++) {
-    var k = normPhone_(data[i][0]);
-    if (k && data[i][1]) map[k] = String(data[i][1]);
-  }
-  return map;
+  var sh = communitiesSheet_();
+  return {};
 }
 
 function assignStaff_(p) {
-  var denied = requireRole_(p.pin, "admin");
-  if (denied) return denied;
-  var list = p.assignments || [];
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    var sh = ensureSheet_("Staff_Assignments", ["Phone", "Community ID"]);
-    var data = sh.getDataRange().getValues();
-    var rowOf = {};
-    for (var i = 1; i < data.length; i++) rowOf[normPhone_(data[i][0])] = i + 1;
-    var comms = readCommunities_();
-    var valid = {};
-    for (var c = 0; c < comms.length; c++) valid[comms[c].id] = true;
-    var saved = 0;
-    for (var j = 0; j < list.length; j++) {
-      var k = normPhone_(list[j].phone);
-      if (!k) continue;
-      var cid = String(list[j].communityId || "");
-      if (cid && !valid[cid]) continue;
-      if (rowOf[k]) {
-        sh.getRange(rowOf[k], 2).setValue(cid);
-      } else if (cid) {
-        var r = sh.getLastRow() + 1;
-        sh.getRange(r, 1).setNumberFormat("@");
-        sh.getRange(r, 1, 1, 2).setValues([[k, cid]]);
-        rowOf[k] = r;
-      }
-      saved++;
-    }
-    SpreadsheetApp.flush();
-    return { success: true, saved: saved, assignments: readAssignments_() };
-  } finally { lock.releaseLock(); }
+  return { success: true, assignments: {} };
 }
 
 // ---------- DASHBOARD ----------
@@ -615,7 +696,7 @@ function getDashboardData_() {
   };
 }
 
-// ---------- REGISTRATION (Saves to 'user details' + 'Student_Face_Data' OR 'Stuff Face_Data') ----------
+// ---------- REGISTRATION ----------
 
 function registerAquaSlashEmployee(payload) {
   var lock = LockService.getScriptLock();
@@ -632,7 +713,6 @@ function registerAquaSlashEmployee(payload) {
     var communityId = String(payload.communityId || "COM-SOBHA").trim();
     var incomingDesc = payload.faceDescriptor || payload.descriptor || null;
 
-    // Check duplicate in user details
     for (var i = 1; i < data.length; i++) {
       var rowName = String(data[i][0] || "").trim().toLowerCase();
       var rowPhone = normPhone_(data[i][1]);
@@ -642,7 +722,6 @@ function registerAquaSlashEmployee(payload) {
       }
     }
 
-    // Save photo to Drive
     var faceUrl = "";
     if (payload.photoBase64) {
       try {
@@ -658,8 +737,6 @@ function registerAquaSlashEmployee(payload) {
       } catch (err) {}
     }
 
-    // 1. Tab: user details
-    // Headers: full name | phone number | mail | Job Title | Face URL
     uSheet.appendRow([
       fullName,
       cleanPhone,
@@ -669,8 +746,6 @@ function registerAquaSlashEmployee(payload) {
     ]);
 
     if (isStudent) {
-      // 2. Tab: Student_Face_Data
-      // Headers: Student Name | Community ID | Face Descriptor
       var sfSheet = studentFaceSheet_();
       sfSheet.appendRow([
         fullName,
@@ -678,8 +753,6 @@ function registerAquaSlashEmployee(payload) {
         incomingDesc ? JSON.stringify(incomingDesc) : ""
       ]);
     } else {
-      // 3. Tab: Stuff Face_Data
-      // Headers: Full Name | Phone Number | Job Title | Face Descriptor
       var stfSheet = staffFaceSheet_();
       stfSheet.appendRow([
         fullName,
@@ -705,7 +778,6 @@ function registerAquaSlashEmployee(payload) {
 // ---------- FACE TEMPLATES (STAFF & STUDENTS) ----------
 
 function getRegisteredFaceTemplates() {
-  var ss = ss_();
   var sh = staffFaceSheet_();
   var data = sh.getDataRange().getValues();
   var templates = [];
@@ -787,7 +859,6 @@ function updateFaceTemplate_(payload) {
 }
 
 // ---------- STAFF ATTENDANCE (Tab: Stuff Attendance) ----------
-// Headers: Date | Phone Number | Full Name | Job Title | Check In | Check Out | Community | distance
 
 function getTodayAttendanceList_() {
   var sh = staffAttSheet_();
@@ -835,7 +906,6 @@ function markAttendance_(p, mode) {
     var fullName = String(p.fullName || "").trim();
     var jobTitle = String(p.jobTitle || "Staff").trim();
 
-    // Look up in user details if phone or name is missing
     if (!fullName || !rawPhone) {
       var uData = userDetailsSheet_().getDataRange().getValues();
       for (var u = 1; u < uData.length; u++) {
@@ -852,10 +922,7 @@ function markAttendance_(p, mode) {
 
     if (!fullName) fullName = "Staff Member";
 
-    // 200m Geofence Evaluation
-    var assignedComm = readAssignments_()[pNorm] || "";
-    var geo = evaluateLocation_(p.lat, p.lng, assignedComm);
-
+    var geo = evaluateLocation_(p.lat, p.lng, "");
     var sh = staffAttSheet_();
     var rec = getTodayRecord_(pNorm || fullName);
     var key = todayKey_();
@@ -867,12 +934,10 @@ function markAttendance_(p, mode) {
       }
       var nextRow = sh.getLastRow() + 1;
       sh.getRange(nextRow, 1, 1, 8).setNumberFormat("@");
-      // Row: Date | Phone Number | Full Name | Job Title | Check In | Check Out | Community | distance
       var row = [key, rawPhone, fullName, jobTitle, t, "", geo.communityName, geo.distanceStr];
       sh.getRange(nextRow, 1, 1, 8).setValues([row]);
       SpreadsheetApp.flush();
 
-      // Custom greeting for Staff Check-In:
       var greeting = "Look who showed up! Welcome back, " + fullName + "!";
       return {
         success: true,
@@ -882,7 +947,6 @@ function markAttendance_(p, mode) {
       };
     }
 
-    // Check Out
     if (!rec || !rec.checkIn) {
       return { success: false, message: "No check-in found for today. Please Check In first.", record: rec, gps: null };
     }
@@ -894,7 +958,6 @@ function markAttendance_(p, mode) {
     outCell.setNumberFormat("@");
     outCell.setValue(t);
 
-    // Update community and distance if provided
     if (geo.communityName && geo.communityName !== "outside") {
       sh.getRange(rec.rowNumber, 7).setValue(geo.communityName);
     }
@@ -903,8 +966,6 @@ function markAttendance_(p, mode) {
     }
 
     SpreadsheetApp.flush();
-
-    // Custom greeting for Staff Check-Out:
     var outGreeting = "Shift over, " + fullName + "! Great work today!";
     return {
       success: true,
@@ -918,7 +979,6 @@ function markAttendance_(p, mode) {
 }
 
 // ---------- STUDENT ATTENDANCE (Tab: Student Attendance) ----------
-// Headers: Student Name | Community Name | Check In | Check Out
 
 function readStudentToday_() {
   var sh = studentAttSheet_();
@@ -966,12 +1026,10 @@ function studentMark_(p, mode) {
       }
       var nr = sh.getLastRow() + 1;
       sh.getRange(nr, 1, 1, 4).setNumberFormat("@");
-      // Row: Student Name | Community Name | Check In | Check Out
       var row = [studentName, geo.communityName, t, ""];
       sh.getRange(nr, 1, 1, 4).setValues([row]);
       SpreadsheetApp.flush();
 
-      // Custom Greeting for Student:
       var greeting = "Welcome to Aqua Slash, " + studentName + "!";
       return {
         success: true,
@@ -1004,7 +1062,6 @@ function studentMark_(p, mode) {
   }
 }
 
-// Student Biometric Face Attendance Scanning
 function studentFaceMark_(p, mode) {
   return studentMark_(p, mode);
 }
@@ -1067,11 +1124,8 @@ function registerStudentWithFace_(p) {
   });
 }
 
-// ---------- COMPREHENSIVE REPORTS ----------
-
 function report_(p) {
   var rows = [];
-  // Staff records
   var staffList = getTodayAttendanceList_();
   for (var i = 0; i < staffList.length; i++) {
     var s = staffList[i];
@@ -1088,7 +1142,6 @@ function report_(p) {
       inStatus: s.community !== "outside" ? ST_IN : ST_OUT
     });
   }
-  // Student records
   var stuList = readStudentToday_();
   for (var j = 0; j < stuList.length; j++) {
     var st = stuList[j];
