@@ -1,5 +1,5 @@
 // =======================================================
-// AQUA SLASH — UNIFIED GOOGLE APPS SCRIPT BACKEND (v7)
+// AQUA SLASH — UNIFIED GOOGLE APPS SCRIPT BACKEND (v8)
 // Paste into Code.gs -> Deploy -> Manage deployments ->
 // Edit (pencil) -> Version: New version -> Deploy.
 //
@@ -13,13 +13,13 @@
 // =======================================================
 
 export const UNIFIED_CODE_GS = `// =======================================================
-// AQUA SLASH — UNIFIED BACKEND v7
+// AQUA SLASH — UNIFIED BACKEND v8
 // Staff + Students Face Attendance + Communities + GPS + PIN
 // =======================================================
 var DRIVE_FOLDER_ID = "1akmXAdAXuCrl_rSBhnzetRtEIJLdtqdr";
 var SHEET_ID        = "1keNtJdMbyT7_kNYJq6Inbtm0HrZKR5wVN9nebugg4Uo";
 var SUBFOLDER_NAME  = "Registered_Faces";
-var VERSION = 7;
+var VERSION = 8;
 
 var ST_IN    = "Inside assigned location";
 var ST_OUT   = "Outside assigned location";
@@ -512,29 +512,62 @@ function getDashboardData_() {
   driveFiles.sort(function(a, b) { return b.createdMs - a.createdMs; });
 
   var descByPhone = {};
+  var descByName = {};
   var bioRowsByPhone = {};
   var staffBio = staffFaceSheet_();
   var bData = staffBio.getDataRange().getValues();
   for (var b = 1; b < bData.length; b++) {
     var bp = normPhone_(bData[b][1]);
-    if (!bp) continue;
-    bioRowsByPhone[bp] = {
-      fullName: String(bData[b][0] || "").trim(),
-      phone: String(bData[b][1] || "").trim(),
-      jobTitle: String(bData[b][2] || "").trim()
-    };
+    var bName = String(bData[b][0] || "").trim();
+    if (bp) {
+      bioRowsByPhone[bp] = {
+        fullName: bName,
+        phone: String(bData[b][1] || "").trim(),
+        jobTitle: String(bData[b][2] || "Staff").trim()
+      };
+    }
     if (bData[b][3]) {
       try {
         var parsed = JSON.parse(String(bData[b][3]));
-        if (parsed && parsed.length === 128) descByPhone[bp] = parsed;
+        if (parsed && parsed.length === 128) {
+          if (bp) descByPhone[bp] = parsed;
+          if (bName) descByName[bName.toLowerCase()] = parsed;
+        }
       } catch (err) {}
     }
+  }
+
+  // Also load Student_Face_Data descriptors so ALL students (including older ones) work in Face Login
+  var stuDescByName = {};
+  var stuRows = [];
+  var stuSh = studentFaceSheet_();
+  var stuData = stuSh.getDataRange().getValues();
+  for (var s = 1; s < stuData.length; s++) {
+    var sName = String(stuData[s][0] || "").trim();
+    if (!sName) continue;
+    var sDesc = [];
+    if (stuData[s][2]) {
+      try {
+        var sp = JSON.parse(String(stuData[s][2]));
+        if (sp && sp.length === 128) {
+          sDesc = sp;
+          stuDescByName[sName.toLowerCase()] = sp;
+        }
+      } catch (err) {}
+    }
+    stuRows.push({
+      id: "STU-" + s,
+      fullName: sName,
+      communityId: String(stuData[s][1] || "COM-SOBHA").trim(),
+      descriptor: sDesc
+    });
   }
 
   var uSheet = userDetailsSheet_();
   var sData = uSheet.getDataRange().getValues();
   var employees = [];
   var seenPhones = {};
+  var seenNames = {};
 
   for (var i = 1; i < sData.length; i++) {
     var fullName = String(sData[i][0] || "").trim();
@@ -542,13 +575,16 @@ function getDashboardData_() {
     var pNorm = normPhone_(rawPhone);
     if (!pNorm && !fullName) continue;
     if (pNorm) seenPhones[pNorm] = true;
+    if (fullName) seenNames[fullName.toLowerCase()] = true;
 
     var email = String(sData[i][2] || "").trim();
     var jobTitle = String(sData[i][3] || "").trim();
     var faceUrl = String(sData[i][4] || "").trim();
     var fId = extractDriveId_(faceUrl);
     var dFile = (fId && fileById[fId]) ? fileById[fId] : (pNorm && fileByPhone[pNorm] ? fileByPhone[pNorm] : null);
-    var desc = (pNorm && descByPhone[pNorm]) ? descByPhone[pNorm] : [];
+    var isStu = /student/i.test(jobTitle);
+    var nameKey = fullName.toLowerCase();
+    var desc = (isStu ? stuDescByName[nameKey] : ((pNorm && descByPhone[pNorm]) || descByName[nameKey])) || stuDescByName[nameKey] || descByName[nameKey] || [];
 
     employees.push({
       fullName: fullName,
@@ -560,6 +596,44 @@ function getDashboardData_() {
       hasFaceDescriptor: desc.length === 128,
       descriptor: desc
     });
+  }
+
+  // Include any staff from Stuff Face_Data not in user details
+  for (var k in bioRowsByPhone) {
+    if (!seenPhones[k]) {
+      var br = bioRowsByPhone[k];
+      var df = fileByPhone[k] || null;
+      var d2 = descByPhone[k] || [];
+      seenNames[br.fullName.toLowerCase()] = true;
+      employees.push({
+        fullName: br.fullName,
+        phone: br.phone,
+        email: "",
+        jobTitle: br.jobTitle,
+        faceUrl: df ? df.url : "",
+        registeredDate: df ? df.createdDisplay : "",
+        hasFaceDescriptor: d2.length === 128,
+        descriptor: d2
+      });
+    }
+  }
+
+  // Include any older students from Student_Face_Data not in user details (e.g. Khushi mehta)
+  for (var r = 0; r < stuRows.length; r++) {
+    var sr = stuRows[r];
+    if (!seenNames[sr.fullName.toLowerCase()]) {
+      seenNames[sr.fullName.toLowerCase()] = true;
+      employees.push({
+        fullName: sr.fullName,
+        phone: sr.id,
+        email: "",
+        jobTitle: "Student",
+        faceUrl: "",
+        registeredDate: "",
+        hasFaceDescriptor: sr.descriptor.length === 128,
+        descriptor: sr.descriptor
+      });
+    }
   }
 
   return {
@@ -934,20 +1008,59 @@ function staffMark_(p, mode) {
 
 // ---------- STUDENT ATTENDANCE (Tab: Student Attendance ONLY) ----------
 
+function resolveStudentById_(studentId) {
+  var m = String(studentId || "").match(/^STU-(\d+)$/i);
+  if (!m) return null;
+  var rowIdx = parseInt(m[1], 10);
+  var data = studentFaceSheet_().getDataRange().getValues();
+  if (rowIdx >= 1 && rowIdx < data.length) {
+    var name = String(data[rowIdx][0] || "").trim();
+    if (name) {
+      return {
+        studentId: "STU-" + rowIdx,
+        name: name,
+        communityId: String(data[rowIdx][1] || "COM-SOBHA").trim() || "COM-SOBHA"
+      };
+    }
+  }
+  return null;
+}
+
 function readStudentToday_() {
   var sh = studentAttSheet_();
   var raw = sh.getDataRange().getValues();
   var disp = sh.getDataRange().getDisplayValues();
+  var sfData = studentFaceSheet_().getDataRange().getValues();
+  var idByName = {};
+  var commByName = {};
+  for (var s = 1; s < sfData.length; s++) {
+    var sName = String(sfData[s][0] || "").trim().toLowerCase();
+    if (sName) {
+      idByName[sName] = "STU-" + s;
+      commByName[sName] = String(sfData[s][1] || "COM-SOBHA").trim() || "COM-SOBHA";
+    }
+  }
   var list = [];
   for (var i = 1; i < raw.length; i++) {
     var name = String(disp[i][0] || raw[i][0] || "").trim();
     if (!name) continue;
+    var commName = String(disp[i][1] || raw[i][1] || "").trim();
+    var nKey = name.toLowerCase();
     list.push({
       rowNumber: i + 1,
+      dateKey: todayKey_(),
+      studentId: idByName[nKey] || ("STU-" + i),
+      student: name,
       studentName: name,
-      communityName: String(disp[i][1] || raw[i][1] || "").trim(),
+      community: commName,
+      communityName: commName,
+      communityId: commByName[nKey] || "COM-SOBHA",
       checkIn: String(disp[i][2] || raw[i][2] || "").trim(),
-      checkOut: String(disp[i][3] || raw[i][3] || "").trim()
+      checkOut: String(disp[i][3] || raw[i][3] || "").trim(),
+      inStatus: commName && commName !== "outside" ? ST_IN : ST_OUT,
+      inDistance: null,
+      outStatus: "",
+      outDistance: null
     });
   }
   return list;
@@ -967,9 +1080,17 @@ function studentMark_(p, mode) {
   lock.waitLock(20000);
   try {
     var studentName = String(p.studentName || p.fullName || p.name || "").trim();
+    var commId = String(p.communityId || "").trim();
+    if (!studentName && p.studentId) {
+      var found = resolveStudentById_(p.studentId);
+      if (found) {
+        studentName = found.name;
+        if (!commId) commId = found.communityId;
+      }
+    }
     if (!studentName) return { success: false, message: "Student Name is required." };
 
-    var geo = evaluateLocation_(p.lat, p.lng, p.communityId || "");
+    var geo = evaluateLocation_(p.lat, p.lng, commId);
     var sh = studentAttSheet_();
     var t = nowTime_();
     var rec = findStudentTodayRecord_(studentName);
@@ -1030,7 +1151,7 @@ function listStudents_(p) {
     list.push({
       id: "STU-" + i,
       name: name,
-      communityId: String(data[i][1] || "").trim(),
+      communityId: String(data[i][1] || "COM-SOBHA").trim() || "COM-SOBHA",
       active: true,
       hasFace: !!data[i][2]
     });

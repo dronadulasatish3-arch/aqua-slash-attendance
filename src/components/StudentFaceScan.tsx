@@ -113,9 +113,9 @@ export function StudentFaceScan({
       setTemplates(faceList);
       templatesRef.current = faceList;
 
-      // Filter by community if one is selected
+      // Filter by community if one is selected (include legacy students with empty communityId)
       const filtered = communityId
-        ? faceList.filter((f) => f.communityId === communityId)
+        ? faceList.filter((f) => !f.communityId || f.communityId === communityId)
         : faceList;
 
       matcherRef.current = buildLabeledMatcher(
@@ -146,7 +146,7 @@ export function StudentFaceScan({
   // Rebuild matcher when community changes
   useEffect(() => {
     const filtered = communityId
-      ? templatesRef.current.filter((f) => f.communityId === communityId)
+      ? templatesRef.current.filter((f) => !f.communityId || f.communityId === communityId)
       : templatesRef.current;
 
     matcherRef.current = buildLabeledMatcher(

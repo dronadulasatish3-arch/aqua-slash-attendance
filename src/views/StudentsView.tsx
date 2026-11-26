@@ -102,7 +102,7 @@ export function StudentsView({ auth, communities, onAuthLost }: Props) {
   }, [today]);
 
   const inCommunity = useMemo(
-    () => students.filter((s) => s.active && s.communityId === communityId),
+    () => students.filter((s) => s.active && (!s.communityId || s.communityId === communityId)),
     [students, communityId]
   );
   const visible = useMemo(() => {
