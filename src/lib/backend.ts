@@ -202,9 +202,12 @@ function normalizeDescriptor(d: any): number[] {
  */
 export async function getDashboard(): Promise<DashboardData> {
   const { registration } = getEndpoints();
-  const res = await gasGet(registration, { action: "dashboard" });
+  const [res, facesRes] = await Promise.all([
+    gasGet(registration, { action: "dashboard" }),
+    gasGet(registration, { action: "getFaces" }).catch(() => null),
+  ]);
 
-  // Live v3 backend response
+  // Live v3+ backend response
   if (res && res.success === true) {
     const employees: Employee[] = (Array.isArray(res.employees) ? res.employees : []).map(
       (r: any) => {
@@ -222,6 +225,45 @@ export async function getDashboard(): Promise<DashboardData> {
         };
       }
     );
+
+    // Merge all face templates from getFaces (Stuff Face_Data + Student_Face_Data)
+    if (facesRes && facesRes.success && Array.isArray(facesRes.employees)) {
+      const byPhone = new Map<string, number>();
+      const byName = new Map<string, number>();
+      employees.forEach((e, idx) => {
+        if (e.phone) byPhone.set(normPhone(e.phone) || e.phone.toLowerCase(), idx);
+        if (e.fullName) byName.set(e.fullName.toLowerCase(), idx);
+      });
+
+      facesRes.employees.forEach((r: any, idx: number) => {
+        const desc = normalizeDescriptor(r.descriptor);
+        const fullName = String(r.fullName || "").trim();
+        const phone = String(r.phone || "").trim() || `FACE-${idx + 1}`;
+        const pKey = normPhone(phone) || phone.toLowerCase();
+        const nKey = fullName.toLowerCase();
+
+        const existingIdx = byPhone.get(pKey) ?? byName.get(nKey);
+        if (existingIdx !== undefined) {
+          if (desc.length === 128 && employees[existingIdx].descriptor.length !== 128) {
+            employees[existingIdx].descriptor = desc;
+            employees[existingIdx].hasFaceDescriptor = true;
+          }
+        } else if (fullName) {
+          const newIdx = employees.length;
+          employees.push({
+            fullName,
+            phone,
+            email: "",
+            jobTitle: String(r.jobTitle || (r.isStudent ? "Student" : "Staff")).trim(),
+            hasFaceDescriptor: desc.length === 128,
+            descriptor: desc,
+            source: "remote",
+          });
+          byPhone.set(pKey, newIdx);
+          byName.set(nKey, newIdx);
+        }
+      });
+    }
 
     const todayAttendance: AttendanceRecord[] = (
       Array.isArray(res.todayAttendance) ? res.todayAttendance : []
@@ -247,7 +289,7 @@ export async function getDashboard(): Promise<DashboardData> {
           month: "short",
           year: "numeric",
         }),
-      registeredCount: Number(res.registeredCount ?? employees.length),
+      registeredCount: Math.max(Number(res.registeredCount ?? 0), employees.length),
       drivePhotoCount: Number(res.drivePhotoCount ?? employees.length),
       latestDriveDate: String(res.latestDriveDate || ""),
       employees,
@@ -257,11 +299,11 @@ export async function getDashboard(): Promise<DashboardData> {
   }
 
   // Fallback for v2 backend (before user pastes Code.gs v3)
-  const facesRes = await gasGet(registration, { action: "getFaces" });
-  if (!facesRes || facesRes.success === false) {
-    throw new Error(facesRes?.message || "Failed to load data from Google Sheets.");
+  const v2FacesRes = facesRes || (await gasGet(registration, { action: "getFaces" }));
+  if (!v2FacesRes || v2FacesRes.success === false) {
+    throw new Error(v2FacesRes?.message || "Failed to load data from Google Sheets.");
   }
-  const remoteRows: any[] = Array.isArray(facesRes.employees) ? facesRes.employees : [];
+  const remoteRows: any[] = Array.isArray(v2FacesRes.employees) ? v2FacesRes.employees : [];
   const employees: Employee[] = remoteRows
     .map((r) => {
       const desc = normalizeDescriptor(r.descriptor);
@@ -302,11 +344,51 @@ export async function getFaces(): Promise<{
   totalRegistered: number;
   backendVersion: number;
 }> {
-  const dash = await getDashboard();
+  const { registration } = getEndpoints();
+  const [facesRes, dashRes] = await Promise.all([
+    gasGet(registration, { action: "getFaces" }).catch(() => null),
+    getDashboard().catch(() => null),
+  ]);
+
+  const byKey = new Map<string, Employee>();
+
+  if (dashRes) {
+    for (const emp of dashRes.faceTemplates) {
+      const key = (emp.phone || emp.fullName).trim();
+      if (key && emp.descriptor.length === 128) {
+        byKey.set(key, { ...emp, phone: key });
+      }
+    }
+  }
+
+  if (facesRes && facesRes.success && Array.isArray(facesRes.employees)) {
+    facesRes.employees.forEach((r: any, idx: number) => {
+      const desc = normalizeDescriptor(r.descriptor);
+      if (desc.length !== 128) return;
+      const fullName = String(r.fullName || "").trim();
+      const phone = String(r.phone || "").trim() || `FACE-${idx + 1}`;
+      if (!byKey.has(phone)) {
+        byKey.set(phone, {
+          fullName,
+          phone,
+          email: "",
+          jobTitle: String(r.jobTitle || (r.isStudent ? "Student" : "Staff")).trim(),
+          hasFaceDescriptor: true,
+          descriptor: desc,
+          source: "remote",
+        });
+      }
+    });
+  }
+
+  const employees = Array.from(byKey.values());
+  const backendVersion = Number(facesRes?.version || dashRes?.backendVersion || 3);
+  if (employees.length > 0 || facesRes?.success) markHealthy(backendVersion);
+
   return {
-    employees: dash.faceTemplates,
-    totalRegistered: dash.registeredCount,
-    backendVersion: dash.backendVersion,
+    employees,
+    totalRegistered: Math.max(employees.length, dashRes?.registeredCount || 0),
+    backendVersion,
   };
 }
 
@@ -399,13 +481,20 @@ export async function updateEmployeeFaceTemplate(
   }
 }
 
-/** Read today's attendance row for an employee from Google Sheets ("Attendance" tab). */
+/** Read today's attendance row for an employee or student from Google Sheets. */
 export async function getAttendanceStatus(
-  phone: string
+  phone: string,
+  fullName = "",
+  jobTitle = ""
 ): Promise<{ record: AttendanceRecord | null; mode: "live" }> {
   const { attendance } = getEndpoints();
   const clean = phone.trim();
-  const res = await gasGet(attendance, { action: "attendanceStatus", phone: clean });
+  const res = await gasGet(attendance, {
+    action: "attendanceStatus",
+    phone: clean,
+    fullName: fullName.trim(),
+    jobTitle: jobTitle.trim(),
+  });
   if (!res || res.success === false) {
     throw new Error(res?.message || "Could not fetch attendance status from Google Sheets.");
   }
@@ -415,13 +504,18 @@ export async function getAttendanceStatus(
     saveSessionAttendanceRecord(serverRec);
     return { record: serverRec, mode: "live" };
   }
-  // Fallback to in-session verified write if server is still on v2 Date reader
+  const pNorm = normPhone(clean);
+  const nameLower = fullName.trim().toLowerCase();
   const cached =
-    readSessionAttendance().find((r) => normPhone(r.phone) === normPhone(clean)) || null;
+    readSessionAttendance().find(
+      (r) =>
+        (pNorm && normPhone(r.phone) === pNorm) ||
+        (nameLower && r.fullName.toLowerCase() === nameLower)
+    ) || null;
   return { record: cached, mode: "live" };
 }
 
-/** Write Check-In or Check-Out date & timestamp into Google Sheets ("Attendance" tab). */
+/** Write Check-In or Check-Out date & timestamp into Google Sheets. */
 export async function markAttendance(
   phone: string,
   fullName: string,
@@ -431,9 +525,14 @@ export async function markAttendance(
   const { attendance } = getEndpoints();
   const cleanPhone = phone.trim();
   const pNorm = normPhone(cleanPhone);
+  const nameLower = fullName.trim().toLowerCase();
 
-  // Client-side guard against accidental double-tap on v2 before server Date fix
-  const sessionExisting = readSessionAttendance().find((r) => normPhone(r.phone) === pNorm);
+  // Client-side guard against accidental double-tap
+  const sessionExisting = readSessionAttendance().find(
+    (r) =>
+      (pNorm && normPhone(r.phone) === pNorm) ||
+      (nameLower && r.fullName.toLowerCase() === nameLower)
+  );
   if (kind === "in" && sessionExisting?.checkIn) {
     return {
       mode: "live",

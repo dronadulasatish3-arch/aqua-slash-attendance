@@ -914,9 +914,26 @@ function getTodayAttendanceList_() {
 }
 
 function getTodayRecord_(p) {
-  var pPhone = typeof p === "string" ? p : String(p?.phone || p?.fullName || "");
+  var pPhone = typeof p === "string" ? p : String((p && (p.phone || p.fullName)) || "");
+  var fullName = typeof p === "object" && p ? String(p.fullName || p.studentName || p.name || "").trim() : pPhone.trim();
+  var jobTitle = typeof p === "object" && p ? String(p.jobTitle || "").trim() : "";
+
+  if (isUserStudent_(fullName, pPhone, jobTitle)) {
+    var sRec = findStudentTodayRecord_(fullName || pPhone);
+    if (!sRec) return null;
+    return {
+      dateKey: sRec.dateKey,
+      phone: pPhone || sRec.studentId,
+      fullName: sRec.studentName,
+      jobTitle: "Student",
+      checkIn: sRec.checkIn,
+      checkOut: sRec.checkOut,
+      community: sRec.communityName
+    };
+  }
+
   var pNorm = normPhone_(pPhone);
-  var targetName = pPhone.trim().toLowerCase();
+  var targetName = (fullName || pPhone).trim().toLowerCase();
   var list = getTodayAttendanceList_();
   for (var i = list.length - 1; i >= 0; i--) {
     if ((pNorm && normPhone_(list[i].phone) === pNorm) || (targetName && list[i].fullName.toLowerCase() === targetName)) {
@@ -1041,21 +1058,25 @@ function readStudentToday_() {
     }
   }
   var list = [];
+  var today = todayKey_();
   for (var i = 1; i < raw.length; i++) {
     var name = String(disp[i][0] || raw[i][0] || "").trim();
     if (!name) continue;
+    var rawIn = String(disp[i][2] || raw[i][2] || "").trim();
+    // Only treat rows stamped with today's date as today's record so old days never block check-in
+    if (rawIn.indexOf(today) !== 0) continue;
     var commName = String(disp[i][1] || raw[i][1] || "").trim();
     var nKey = name.toLowerCase();
     list.push({
       rowNumber: i + 1,
-      dateKey: todayKey_(),
+      dateKey: today,
       studentId: idByName[nKey] || ("STU-" + i),
       student: name,
       studentName: name,
       community: commName,
       communityName: commName,
       communityId: commByName[nKey] || "COM-SOBHA",
-      checkIn: String(disp[i][2] || raw[i][2] || "").trim(),
+      checkIn: rawIn,
       checkOut: String(disp[i][3] || raw[i][3] || "").trim(),
       inStatus: commName && commName !== "outside" ? ST_IN : ST_OUT,
       inDistance: null,
@@ -1101,7 +1122,8 @@ function studentMark_(p, mode) {
       }
       var nr = sh.getLastRow() + 1;
       sh.getRange(nr, 1, 1, 4).setNumberFormat("@");
-      var row = [studentName, geo.communityName, t, ""];
+      var stampIn = todayKey_() + " " + t;
+      var row = [studentName, geo.communityName, stampIn, ""];
       sh.getRange(nr, 1, 1, 4).setValues([row]);
       SpreadsheetApp.flush();
 

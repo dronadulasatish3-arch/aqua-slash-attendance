@@ -54,7 +54,11 @@ export function Welcome({
     let cancelled = false;
     (async () => {
       try {
-        const { record: rec } = await getAttendanceStatus(employee.phone);
+        const { record: rec } = await getAttendanceStatus(
+          employee.phone,
+          employee.fullName,
+          employee.jobTitle
+        );
         if (!cancelled) setRecord(rec);
       } catch (e: any) {
         if (!cancelled) {
