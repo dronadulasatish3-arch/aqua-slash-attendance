@@ -314,37 +314,60 @@ export function FaceLogin({
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="mb-3 text-center">
-        <h2 className="font-display text-[21px] font-bold text-white">Face Login</h2>
-        <p className="mt-0.5 text-[12.5px] text-slate-400">
-          Look at the camera — Check-in &amp; Check-out opens automatically
-        </p>
+      {/* TOP LIVE ATTENDANCE PILL */}
+      <div className="mb-3.5 flex justify-center">
+        <span className="inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-[#0d2d57] px-4 py-1.5 text-[12.5px] font-bold text-white shadow-sm">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+          </span>
+          Live Attendance
+        </span>
       </div>
 
       <CameraStage
         videoRef={videoRef}
         live={cameraLive}
         scanning={phase === "scanning"}
-        guide={guideState}
+        guide={phase === "liveness" ? "locked" : "hidden"}
+        cornerColor="rgba(255,255,255,0.95)"
         placeholder={
           phase === "boot" ? (
             <div className="flex flex-col items-center gap-3">
-              <Cpu size={26} className="animate-pulse text-cyan-400" />
-              <span className="text-xs font-semibold text-slate-400">Starting Face AI…</span>
+              <Cpu size={26} className="animate-pulse text-sky-400" />
+              <span className="text-xs font-semibold text-sky-200/80">Starting Face AI…</span>
+            </div>
+          ) : undefined
+        }
+        overlay={
+          cameraLive ? (
+            <div className="rounded-2xl border border-white/15 bg-[#051833]/80 px-4 py-3 text-center backdrop-blur-md">
+              <div className="flex items-center justify-center gap-2 text-[14px] font-bold text-white">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-300 border-t-transparent" />
+                <span>
+                  {candidateName
+                    ? `Matched ${candidateName}…`
+                    : phase === "liveness"
+                      ? "Verifying live face…"
+                      : "Recognizing…"}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-sky-200/90">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                <span>Face ID Active – Live Attendance</span>
+              </div>
             </div>
           ) : undefined
         }
       />
 
-      <div className="mt-3">
-        <Notice kind={notice.kind}>
-          <span className="flex items-center gap-2">
-            {phase === "liveness" && <Eye size={15} className="shrink-0" />}
-            {phase === "scanning" && <ScanFace size={15} className="shrink-0 animate-pulse" />}
-            {notice.text}
-          </span>
-        </Notice>
-      </div>
+      {notice.kind === "err" && (
+        <div className="mt-3">
+          <Notice kind="err">
+            <span className="flex items-center gap-2">{notice.text}</span>
+          </Notice>
+        </div>
+      )}
 
       {phase === "no-employees" && (
         <div className="mt-3 space-y-2.5">
@@ -371,8 +394,8 @@ export function FaceLogin({
       )}
 
       <div className="mt-3.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 rounded-full border border-[#1c2c42] bg-[#0b1828] px-3.5 py-2 text-[11px] font-semibold text-slate-300">
-          <Users size={13} className="text-cyan-400" />
+        <div className="flex items-center gap-2 rounded-full border border-sky-400/20 bg-[#0b2a52] px-3.5 py-2 text-[11px] font-semibold text-sky-100">
+          <Users size={13} className="text-sky-300" />
           {totalInSheet || employeeCount} Registered
         </div>
         <div className="flex gap-2">
@@ -380,7 +403,7 @@ export function FaceLogin({
             type="button"
             disabled={syncing}
             onClick={() => refreshFaces(true)}
-            className="flex items-center gap-1.5 rounded-full border border-[#1c2c42] bg-[#0b1828] px-3.5 py-2 text-[11px] font-semibold text-slate-300 transition-colors hover:border-cyan-500/40 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-full border border-sky-400/20 bg-[#0b2a52] px-3.5 py-2 text-[11px] font-semibold text-sky-100 transition-colors hover:border-sky-300/50 disabled:opacity-50"
           >
             <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
             {syncing ? "Syncing…" : "Sync Sheet"}
@@ -388,7 +411,7 @@ export function FaceLogin({
           <button
             type="button"
             onClick={restartAll}
-            className="flex items-center gap-1.5 rounded-full border border-[#1c2c42] bg-[#0b1828] px-3.5 py-2 text-[11px] font-semibold text-slate-300 transition-colors hover:border-cyan-500/40"
+            className="flex items-center gap-1.5 rounded-full border border-sky-400/20 bg-[#0b2a52] px-3.5 py-2 text-[11px] font-semibold text-sky-100 transition-colors hover:border-sky-300/50"
           >
             <Camera size={13} />
             Restart
@@ -396,15 +419,8 @@ export function FaceLogin({
         </div>
       </div>
 
-      {candidateName && (
-        <div className="mt-2.5 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-[12px] font-semibold text-emerald-300">
-          <ShieldCheck size={15} />
-          Matched: {candidateName}
-        </div>
-      )}
-
       {phase === "camera-error" && (
-        <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-slate-500">
+        <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-sky-200/70">
           <AlertCircle size={13} className="mt-0.5 shrink-0 text-amber-400" />
           On iPhone/Android use Safari or Chrome over HTTPS and tap “Allow” when prompted for camera access.
         </p>

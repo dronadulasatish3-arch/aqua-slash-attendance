@@ -1096,6 +1096,22 @@ function findStudentTodayRecord_(studentName) {
   return null;
 }
 
+function minutesSinceCheckIn_(checkInStr) {
+  var s = String(checkInStr || "").trim();
+  if (!s) return 9999;
+  var m = s.match(/(?:(\d{4}-\d{2}-\d{2})\s+)?(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  if (!m) return 9999;
+  var now = new Date();
+  var h = parseInt(m[2], 10);
+  var min = parseInt(m[3], 10);
+  var sec = parseInt(m[4] || "0", 10);
+  var ap = (m[5] || "").toUpperCase();
+  if (ap === "PM" && h < 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, min, sec);
+  return Math.max(0, (now.getTime() - d.getTime()) / 60000);
+}
+
 function studentMark_(p, mode) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -1118,7 +1134,7 @@ function studentMark_(p, mode) {
 
     if (mode === "in") {
       if (rec && rec.checkIn) {
-        return { success: false, already: true, message: studentName + " is already checked in today at " + rec.checkIn + ".", record: rec, gps: geo };
+        return { success: false, already: true, message: "You already checked in! Go to class.", record: rec, gps: geo };
       }
       var nr = sh.getLastRow() + 1;
       sh.getRange(nr, 1, 1, 4).setNumberFormat("@");
@@ -1141,6 +1157,20 @@ function studentMark_(p, mode) {
     }
     if (rec.checkOut) {
       return { success: false, already: true, message: studentName + " is already checked out today at " + rec.checkOut + ".", record: rec, gps: null };
+    }
+
+    // Enforce minimum 1 hour (60 minutes) class duration before Check-Out
+    var elapsedMins = minutesSinceCheckIn_(rec.checkIn);
+    if (elapsedMins < 60) {
+      var minsLeft = Math.max(1, Math.ceil(60 - elapsedMins));
+      return {
+        success: false,
+        tooSoon: true,
+        minutesLeft: minsLeft,
+        message: "You already checked in! Go to class. Check-out opens after 1 hour (" + minsLeft + " min left).",
+        record: rec,
+        gps: geo
+      };
     }
 
     var c = sh.getRange(rec.rowNumber, 4);

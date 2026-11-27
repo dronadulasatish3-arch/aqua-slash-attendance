@@ -43,19 +43,22 @@ function readAuth(): Auth | null {
 
 function Ambient() {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      <div className="float-blob absolute -left-28 top-[-12%] h-[380px] w-[380px] rounded-full bg-cyan-500/12 blur-[120px]" />
+    <div
+      className="pointer-events-none fixed inset-0 overflow-hidden"
+      style={{ background: "linear-gradient(180deg, #dff0fc 0%, #f4f9ff 48%, #d7ecfb 100%)" }}
+    >
+      <div className="float-blob absolute -left-24 top-[-10%] h-[360px] w-[360px] rounded-full bg-sky-300/25 blur-[110px]" />
       <div
-        className="float-blob absolute -right-28 bottom-[6%] h-[380px] w-[380px] rounded-full bg-emerald-500/10 blur-[120px]"
+        className="float-blob absolute -right-24 bottom-[8%] h-[360px] w-[360px] rounded-full bg-cyan-300/25 blur-[110px]"
         style={{ animationDelay: "-8s" }}
       />
-      <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-none opacity-70">
+      <div className="absolute bottom-0 left-0 w-full overflow-hidden leading-none opacity-80">
         <div className="wave-drift flex w-[200%]">
           {[0, 1].map((i) => (
-            <svg key={i} viewBox="0 0 900 90" className="h-[64px] w-1/2" preserveAspectRatio="none">
+            <svg key={i} viewBox="0 0 900 90" className="h-[72px] w-1/2" preserveAspectRatio="none">
               <path
                 d="M0 55 Q 75 20 150 55 T 300 55 T 450 55 T 600 55 T 750 55 T 900 55 V 90 H 0 Z"
-                fill="rgba(2,132,199,0.10)"
+                fill="rgba(56,189,248,0.18)"
               />
             </svg>
           ))}
@@ -257,7 +260,13 @@ export default function App() {
               />
             )}
 
-            <main className="rounded-[26px] border border-[#1e3a5f] bg-[#0f1e32]/90 p-5 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-md sm:p-6">
+            <main
+              className={`rounded-[28px] border p-4 shadow-[0_20px_50px_rgba(6,37,74,0.20)] backdrop-blur-md sm:p-5 ${
+                section === "staff" && view === "login"
+                  ? "border-[#123866] bg-[#062244]"
+                  : "border-[#193a66] bg-[#0a1c34]/95"
+              }`}
+            >
               {section === "staff" && (
                 <AnimatePresence mode="wait">
                   {view === "login" && (
